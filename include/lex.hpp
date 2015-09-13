@@ -5,7 +5,7 @@
 #include <vector>
 #include <cstdint>
 #include <cwctype>
-//#include <boost/interprocess>
+#include <iostream>
 
 namespace little_r {
   static const char *object_names[] = {
@@ -168,16 +168,15 @@ namespace little_r {
     tilde,
     dollar,
     at,
+    comma,
+    semicolon,
   };
 
   class lexer {
   public:
-    lexer(std::istream &istr) : istr(istr) {
-      id.reserve(2048);
+    lexer(std::wistream &istr) : istr(istr) {
+      id_.reserve(2048);
       eof_chr = std::char_traits<wchar_t>::eof();
-      chr = istr.get();
-      chr = istr.get();
-      chr = istr.get();
       chr = istr.get();
     }
 
@@ -185,19 +184,47 @@ namespace little_r {
       skip_whitespace();
 
       if (chr == '#') {
-        id.resize(0);
+        id_.resize(0);
         skip_comment();
       }
 
-      id.resize(0);
+      id_.resize(0);
 
       switch (chr) {
-        case '.': tok = is_digit(istr.peek()) ? parse_numeric_value() : parse_symbol();
-        case '\'': case '"': case '`': return tok = parse_string();
-        case '%': return tok = parse_special();
+        case '>': consume(); return tok_ = next_is('=') ? tt::ge : tt::gt;
+        case '!': consume(); return tok_ = next_is('=') ? tt::ne : tt::not;
+        case '=': consume(); return tok_ = next_is('=') ? tt::eq : tt::eq_assign;
+        case '&': consume(); return tok_ = next_is('&') ? tt::and2 : tt::and;
+        case '|': consume(); return tok_ = next_is('|') ? tt::or2 : tt::or;
+        case '{': consume(); return tok_ = tt::lbrace;
+        case '}': consume(); return tok_ = tt::rbrace;
+        case '(': consume(); return tok_ = tt::lparen;
+        case ')': consume(); return tok_ = tt::rparen;
+        case '[': consume(); return tok_ = next_is('[') ? tt::lbb : tt::lbracket;
+        case ']': consume(); return tok_ = tt::rbracket;
+        case '*': consume(); return tok_ = next_is('*') ? tt::star2 : tt::star;
+        case '+': consume(); return tok_ = tt::plus;
+        case '/': consume(); return tok_ = tt::divide;
+        case '^': consume(); return tok_ = tt::caret;
+        case '~': consume(); return tok_ = tt::tilde;
+        case '$': consume(); return tok_ = tt::dollar;
+        case '@': consume(); return tok_ = tt::at;
+        case ',': consume(); return tok_ = tt::comma;
+        case ';': consume(); return tok_ = tt::semicolon;
+        case '\n': consume(); return tok_ = tt::newline;
+
+        case '\'': case '"':  return tok_ = parse_string();
+        case '`': parse_string(); return tt::symbol;
+        case '%': return tok_ = parse_special();
+
+        case '.': {
+          consume();
+          return tok_ = is_digit(chr) ? parse_numeric_value() : parse_symbol();
+        }
 
         case '<': {
-          return tok =
+          consume();
+          return tok_ =
             next_is('=') ? tt::le :
             next_is('-') ? tt::left_assign :
             next_is('<') ? next_is('-') ? tt::left_assign : tt::error :
@@ -206,7 +233,8 @@ namespace little_r {
         }
 
         case '-': {
-          return tok =
+          consume();
+          return tok_ =
             next_is('>') ? ( next_is('>') ? tt::right_assign : tt::right_assign ) : 
             next_is('=') ? tt::left_assign :
             tt::minus
@@ -214,70 +242,53 @@ namespace little_r {
         }
 
         case ':': {
-          return tok =
+          consume();
+          return tok_ =
             next_is(':') ? ( next_is(':') ? tt::ns_get_int : tt::ns_get ) : 
             next_is('=') ? tt::left_assign :
             tt::colon
           ;
         }
 
-        case '>': return tok = next_is('=') ? tt::ge : tt::gt;
-        case '!': return tok = next_is('=') ? tt::ne : tt::not;
-        case '=': return tok = next_is('=') ? tt::eq : tt::eq_assign;
-        case '&': return tok = next_is('&') ? tt::and2 : tt::and;
-        case '|': return tok = next_is('|') ? tt::or2 : tt::or;
-        case '{': return tok = tt::lbrace;
-        case '}': return tok = tt::rbrace;
-        case '(': return tok = tt::lparen;
-        case ')': return tok = tt::rparen;
-        case '[': return tok = next_is('[') ? tt::lbb : tt::lbracket;
-        case ']': return tok = tt::rbracket;
-        case '*': return tok = next_is('*') ? tt::star2 : tt::star;
-        case '+': return tok = tt::plus;
-        case '/': return tok = tt::divide;
-        case '^': return tok = tt::caret;
-        case '~': return tok = tt::tilde;
-        case '$': return tok = tt::dollar;
-        case '@': return tok = tt::at;
-
         default: {
-          return tok =
+          return tok_ =
             is_digit(chr) ? parse_numeric_value() :
             std::iswalpha(chr) ? parse_symbol() :
+            chr == eof_chr ? tt::end_of_input :
             tt::error
           ;
         }
       }
     }
 
-    operator tt() { return tok; }
+    tt tok() const { return tok_; }
+    std::wstring id() const { return id_; }
 
   private:
     static bool is_digit(int c) {
       return c >= '0' && c <= '9';
     }
 
+    static bool is_hex_digit(int c) {
+      return (c >= '0' && c <= '9') || ((c&~32) >= 'A' && (c&~32) <= 'F');
+    }
+
     void consume() {
-      id.push_back(chr);
+      id_.push_back(chr);
       chr = istr.get();
-      peek = istr.peek();
+    }
+
+    void skip() {
+      chr = istr.get();
     }
 
     bool next_is(int c) {
-      if (istr.peek() == c) {
+      if (chr == c) {
         consume();
         return true;
       }
       return false;
     }
-
-    /*bool next_is(int c, int c2) {
-      if (peek == c || peek == c2) {
-        consume();
-        return true;
-      }
-      return false;
-    }*/
 
     void skip_comment() {
       while (chr == '#') {
@@ -291,8 +302,7 @@ namespace little_r {
     }
 
     tt parse_symbol() {
-      consume();
-      while (iswalnum(peek) || peek == '.' || peek == '_') {
+      while (iswalnum(chr) || chr == '.' || chr == '_') {
         consume();
       }
       return tt::symbol;
@@ -300,25 +310,34 @@ namespace little_r {
 
     tt parse_numeric_value() {
       bool expect_dot = true;
-      if (chr == '0' && (peek == 'x' || peek == 'X')) {
-        //
-      } else {
-        while (is_digit(peek) || (peek == 'e' || peek == 'E') || (peek == '.' && expect_dot)) {
-          expect_dot = peek != '.';
+      int exp_code = 'E';
+      int max_code = '9';
+      if (chr == '0') {
+        consume();
+        if (chr == 'x' || chr == 'X') {
           consume();
+          exp_code = 'P';
+          max_code = 'f';
         }
-        if (peek == 'e' || peek == 'E') {
+      }
+
+      while (chr <= max_code && is_hex_digit(chr) || (chr == '.' && expect_dot)) {
+        expect_dot = chr != '.';
+        consume();
+      }
+
+      if ((chr & ~32) == exp_code) {
+        consume();
+        if (chr == '+' || chr == '-') consume();
+        if (!is_digit(chr)) return tt::error;
+        do {
           consume();
-          if (!is_digit(peek)) return tt::error;
-          do {
-            consume();
-          } while (is_digit(peek));
-        }
-        if (next_is('L')) {
-          //ival = std::atoll(id.c_str());
-        } else {
-          //dval = std::atof(id.c_str());
-        }
+        } while (is_digit(chr));
+      } else if (exp_code == 'p' && !expect_dot) {
+        // can't have 0x1p8
+        return tt::error;
+      }
+      if (next_is('L')) {
       }
       return tt::num_const;
     }
@@ -335,11 +354,39 @@ namespace little_r {
 
     tt parse_string() {
       int terminator = chr == '"' ? '"' : '\'';
-      consume();
+      skip();
       while (chr != terminator && chr != eof_chr) {
         if (chr == '\\') {
-          consume();
+          skip();
           if (chr == '0') {
+            skip();
+            for (int i = 0; i != 3 && chr >= '0' && chr <= '7'; ++i) {
+              skip();
+            }
+            if (chr >= '0' && chr <= '7') {
+              skip();
+              if (chr >= '0' && chr <= '7') {
+                skip();
+              }
+            }
+          } else if (chr == 'x') {
+            skip();
+            for (int i = 0; i != 2; ++i) {
+              if (!is_hex_digit(chr)) return tt::error;
+              skip();
+            }
+          } else if (chr == 'u') {
+            skip();
+            for (int i = 0; i != 4; ++i) {
+              if (!is_hex_digit(chr)) return tt::error;
+              skip();
+            }
+          } else if (chr == 'U') {
+            skip();
+            for (int i = 0; i != 8; ++i) {
+              if (!is_hex_digit(chr)) return tt::error;
+              skip();
+            }
           } else {
             switch (chr) {
               case 'a': chr = '\a'; break;
@@ -358,11 +405,11 @@ namespace little_r {
               default: {
                 throw std::runtime_error("invalid escape char");
               }
-              consume();
             }
+            skip();
           }
         } else {
-           consume();
+           skip();
         }
       }
       next_is(terminator);
@@ -370,32 +417,16 @@ namespace little_r {
     }
 
     void skip_whitespace() {
+      id_.resize(0);
       while (chr == ' ' || chr == '\t' || chr == '\f') {
         consume();
       }
     }
 
-    std::istream &istr;
-    tt tok;
-    std::string id;
-    double as_double;
-    std::int64_t as_int;
+    std::wistream &istr;
+    tt tok_;
+    std::wstring id_;
     int chr;
-    int peek;
     int eof_chr;
   };
-
-  class little_r {
-  public:
-    little_r() {
-      lexer lex(std::ifstream("/Users/Andy/Documents/GitHub/r-source/tests/arith.R"));
-      do {
-        lex.next();
-      } while(lex != tt::error && lex != tt::end_of_input);
-    }
-  };
-}
-
-int main() {
-  little_r::little_r r{};
 }
