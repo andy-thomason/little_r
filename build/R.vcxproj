@@ -81,7 +81,7 @@
     <ClCompile Include="..\test\main.cpp" />
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="..\include\lex.hpp" />
+    <ClInclude Include="..\include\lexer.hpp" />
     <ClInclude Include="..\include\little_r.hpp" />
     <ClInclude Include="..\include\parser.hpp" />
   </ItemGroup>

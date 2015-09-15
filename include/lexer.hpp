@@ -8,113 +8,6 @@
 #include <iostream>
 
 namespace little_r {
-  static const char *object_names[] = {
-    "NULL",    // NULL
-    "symbol",    //a variable name
-    "pairlist",    //a pairlist object (mainly internal)
-    "closure",    //a function
-    "environment",    //an environment
-    "promise",    //an object used to implement lazy evaluation
-    "language",    //an R language construct
-    "special",    //an internal function that does not evaluate its arguments
-    "builtin",    //an internal function that evaluates its arguments
-    "char",    //a ‘scalar’ string object (internal only) ***
-    "logical",    //a vector containing logical values
-    "integer",    //a vector containing integer values
-    "double",    //a vector containing real values
-    "complex",    //a vector containing complex values
-    "character",    //a vector containing character values
-    "...",    //the special variable length argument ***
-    "any",    //a special type that matches all types: there are no objects of this type
-    "expression",    //an expression object
-    "list",    //a list
-    "bytecode",    //byte code (internal only) ***
-    "externalptr",    //an external pointer object
-    "weakref",    //a weak reference object
-    "raw",    //a vector containing bytes
-    "S4",    //an S4 object which is not a simple object
-  };
-
-  enum class obj_types {
-    obj_NULL,
-    obj_symbol,
-    obj_pairlist,
-    obj_closure,
-    obj_environment,
-    obj_promise,
-    obj_language,
-    obj_special,
-    obj_builtin,
-    obj_char,
-    obj_logical,
-    obj_integer,
-    obj_double,
-    obj_complex,
-    obj_character,
-    obj_dot_dot_dot,
-    obj_any,
-    obj_expression,
-    obj_list,
-    obj_bytecode,
-    obj_externalptr,
-    obj_weakref,
-    obj_raw,
-    obj_S4,
-  };
-
-  class obj;
-
-  typedef std::pair<std::string, obj *> pair;
-
-  class obj {
-  public:
-    virtual obj_types type() const = 0;
-    virtual size_t size() const = 0;
-    virtual std::string to_string() const = 0;
-    virtual ~obj() {
-    }
-
-    obj &attr(const std::string &name, obj &object) {
-      for (auto p : attributes_) {
-        if (p.first == name) { p.second = &object; return *this; }
-      }
-      attributes_.push_back(pair(name, &object));
-      return *this;
-    }
-  private:
-    std::vector<pair> attributes_;
-    size_t ref_count_ = 0;
-  };
-
-  class symbol : public obj {
-  public:
-    symbol(const char *name) : name_(name) {
-    }
-
-    obj_types type() const { return obj_types::obj_symbol; }
-    size_t size() const { return 1; }
-    std::string to_string() const { return name_; }
-
-  private:
-    std::string name_;
-  };
-
-  class environment : public obj {
-  public:
-  private:
-    std::vector<pair> frame_;
-    environment *enclosure_;
-  };
-
-  class list {
-  public:
-    obj_types type() const { return obj_types::obj_list; }
-    size_t size() const { return data_.size(); }
-  private:
-    std::vector<obj *> data_;
-    std::string to_string() const { return "[]"; }
-  };
-
   enum class tt {
     undefined,
     end_of_input,
@@ -170,6 +63,65 @@ namespace little_r {
     at,
     comma,
     semicolon,
+    question,
+  };
+
+  static const char *tok_to_str[] = {
+    "undefined",
+    "end_of_input",
+    "error",
+    "str_const",
+    "num_const",
+    "symbol",
+    "left_assign",
+    "newline",
+    "null_const",
+    "function",
+    "eq_assign",
+    "right_assign",
+    "lbb",
+    "for_",
+    "in",
+    "if_",
+    "else_",
+    "while_",
+    "next",
+    "break_",
+    "repeat",
+    "gt",
+    "ge",
+    "lt",
+    "le",
+    "eq",
+    "ne",
+    "and",
+    "or",
+    "and2",
+    "or2",
+    "ns_get",
+    "ns_get_int",
+    "plus",
+    "minus",
+    "star",
+    "divide",
+    "modulus",
+    "special",
+    "colon",
+    "not",
+    "lbrace",
+    "rbrace",
+    "lparen",
+    "rparen",
+    "lbracket",
+    "rbracket",
+    "star2",
+    "caret",
+    "tilde",
+    "dollar",
+    "at",
+    "comma",
+    "semicolon",
+    "question",
   };
 
   class lexer {
@@ -211,6 +163,7 @@ namespace little_r {
         case '@': consume(); return tok_ = tt::at;
         case ',': consume(); return tok_ = tt::comma;
         case ';': consume(); return tok_ = tt::semicolon;
+        case '?': consume(); return tok_ = tt::question;
         case '\n': consume(); return tok_ = tt::newline;
 
         case '\'': case '"':  return tok_ = parse_string();
@@ -337,8 +290,10 @@ namespace little_r {
         // can't have 0x1p8
         return tt::error;
       }
+
       if (next_is('L')) {
       }
+
       return tt::num_const;
     }
 
@@ -369,21 +324,10 @@ namespace little_r {
                 skip();
               }
             }
-          } else if (chr == 'x') {
+          } else if (chr == 'x' || chr == 'u' || chr == 'U') {
+            int num_digits = chr == 'x' ? 2 : chr == 'u' ? 4 : 8;
             skip();
-            for (int i = 0; i != 2; ++i) {
-              if (!is_hex_digit(chr)) return tt::error;
-              skip();
-            }
-          } else if (chr == 'u') {
-            skip();
-            for (int i = 0; i != 4; ++i) {
-              if (!is_hex_digit(chr)) return tt::error;
-              skip();
-            }
-          } else if (chr == 'U') {
-            skip();
-            for (int i = 0; i != 8; ++i) {
+            for (int i = 0; i != num_digits; ++i) {
               if (!is_hex_digit(chr)) return tt::error;
               skip();
             }
