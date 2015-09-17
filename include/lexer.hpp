@@ -1,4 +1,7 @@
 
+#ifndef LEXER_HPP
+#define LEXER_HPP
+
 #include <string>
 #include <fstream>
 #include <memory>
@@ -6,6 +9,8 @@
 #include <cstdint>
 #include <cwctype>
 #include <iostream>
+
+#include "objects.hpp"
 
 namespace little_r {
   enum class tt {
@@ -64,6 +69,7 @@ namespace little_r {
     comma,
     semicolon,
     question,
+    dotdotdot,
   };
 
   static const char *tok_to_str[] = {
@@ -73,55 +79,56 @@ namespace little_r {
     "str_const",
     "num_const",
     "symbol",
-    "left_assign",
-    "newline",
-    "null_const",
+    "<-",
+    "\n",
+    "NULL",
     "function",
-    "eq_assign",
-    "right_assign",
-    "lbb",
-    "for_",
+    "=",
+    "->",
+    "[[",
+    "for",
     "in",
-    "if_",
-    "else_",
-    "while_",
+    "if",
+    "else",
+    "while",
     "next",
-    "break_",
+    "break",
     "repeat",
-    "gt",
-    "ge",
-    "lt",
-    "le",
-    "eq",
-    "ne",
-    "and",
-    "or",
-    "and2",
-    "or2",
+    ">",
+    ">=",
+    "<",
+    "<=",
+    "==",
+    "!=",
+    "&",
+    "|",
+    "&&",
+    "||",
     "ns_get",
     "ns_get_int",
-    "plus",
-    "minus",
-    "star",
-    "divide",
-    "modulus",
-    "special",
-    "colon",
-    "not",
-    "lbrace",
-    "rbrace",
-    "lparen",
-    "rparen",
-    "lbracket",
-    "rbracket",
-    "star2",
-    "caret",
-    "tilde",
-    "dollar",
-    "at",
-    "comma",
-    "semicolon",
-    "question",
+    "+",
+    "-",
+    "*",
+    "/",
+    "%",
+    "%%",
+    ":",
+    "!",
+    "{",
+    "}",
+    "(",
+    ")",
+    "[",
+    "]",
+    "**",
+    "^",
+    "~",
+    "$",
+    "@",
+    ",",
+    ";",
+    "?",
+    "...",
   };
 
   class lexer {
@@ -130,6 +137,7 @@ namespace little_r {
       id_.reserve(2048);
       eof_chr = std::char_traits<wchar_t>::eof();
       chr = istr.get();
+      value_ = nullptr;
     }
 
     tt next() {
@@ -143,79 +151,87 @@ namespace little_r {
       id_.resize(0);
 
       switch (chr) {
-        case '>': consume(); return tok_ = next_is('=') ? tt::ge : tt::gt;
-        case '!': consume(); return tok_ = next_is('=') ? tt::ne : tt::not;
-        case '=': consume(); return tok_ = next_is('=') ? tt::eq : tt::eq_assign;
-        case '&': consume(); return tok_ = next_is('&') ? tt::and2 : tt::and;
-        case '|': consume(); return tok_ = next_is('|') ? tt::or2 : tt::or;
-        case '{': consume(); return tok_ = tt::lbrace;
-        case '}': consume(); return tok_ = tt::rbrace;
-        case '(': consume(); return tok_ = tt::lparen;
-        case ')': consume(); return tok_ = tt::rparen;
-        case '[': consume(); return tok_ = next_is('[') ? tt::lbb : tt::lbracket;
-        case ']': consume(); return tok_ = tt::rbracket;
-        case '*': consume(); return tok_ = next_is('*') ? tt::star2 : tt::star;
-        case '+': consume(); return tok_ = tt::plus;
-        case '/': consume(); return tok_ = tt::divide;
-        case '^': consume(); return tok_ = tt::caret;
-        case '~': consume(); return tok_ = tt::tilde;
-        case '$': consume(); return tok_ = tt::dollar;
-        case '@': consume(); return tok_ = tt::at;
-        case ',': consume(); return tok_ = tt::comma;
-        case ';': consume(); return tok_ = tt::semicolon;
-        case '?': consume(); return tok_ = tt::question;
-        case '\n': consume(); return tok_ = tt::newline;
+        case '>': consume(); tok_ = next_is('=') ? tt::ge : tt::gt; break;
+        case '!': consume(); tok_ = next_is('=') ? tt::ne : tt::not; break;
+        case '=': consume(); tok_ = next_is('=') ? tt::eq : tt::eq_assign; break;
+        case '&': consume(); tok_ = next_is('&') ? tt::and2 : tt::and; break;
+        case '|': consume(); tok_ = next_is('|') ? tt::or2 : tt::or; break;
+        case '{': consume(); tok_ = tt::lbrace; break;
+        case '}': consume(); tok_ = tt::rbrace; break;
+        case '(': consume(); tok_ = tt::lparen; break;
+        case ')': consume(); tok_ = tt::rparen; break;
+        case '[': consume(); tok_ = next_is('[') ? tt::lbb : tt::lbracket; break;
+        case ']': consume(); tok_ = tt::rbracket; break;
+        case '*': consume(); tok_ = next_is('*') ? tt::star2 : tt::star; break;
+        case '+': consume(); tok_ = tt::plus; break;
+        case '/': consume(); tok_ = tt::divide; break;
+        case '^': consume(); tok_ = tt::caret; break;
+        case '~': consume(); tok_ = tt::tilde; break;
+        case '$': consume(); tok_ = tt::dollar; break;
+        case '@': consume(); tok_ = tt::at; break;
+        case ',': consume(); tok_ = tt::comma; break;
+        case ';': consume(); tok_ = tt::semicolon; break;
+        case '?': consume(); tok_ = tt::question; break;
+        case '\n': consume(); tok_ = tt::newline; break;
 
-        case '\'': case '"':  return tok_ = parse_string();
-        case '`': parse_string(); return tt::symbol;
-        case '%': return tok_ = parse_special();
+        case '\'': case '"':  tok_ = parse_string(); break;
+        case '`': parse_string(); tok_ = tt::symbol; break;
+        case '%': tok_ = parse_special(); break;
 
         case '.': {
           consume();
-          return tok_ = is_digit(chr) ? parse_numeric_value() : parse_symbol();
+          tok_ = is_digit(chr) ? parse_numeric_value() : parse_symbol();
+          break;
         }
 
         case '<': {
           consume();
-          return tok_ =
+          tok_ =
             next_is('=') ? tt::le :
             next_is('-') ? tt::left_assign :
             next_is('<') ? next_is('-') ? tt::left_assign : tt::error :
             tt::lt
           ;
+          break;
         }
 
         case '-': {
           consume();
-          return tok_ =
+          tok_ =
             next_is('>') ? ( next_is('>') ? tt::right_assign : tt::right_assign ) : 
             next_is('=') ? tt::left_assign :
             tt::minus
           ;
+          break;
         }
 
         case ':': {
           consume();
-          return tok_ =
+          tok_ =
             next_is(':') ? ( next_is(':') ? tt::ns_get_int : tt::ns_get ) : 
             next_is('=') ? tt::left_assign :
             tt::colon
           ;
+          break;
         }
 
         default: {
-          return tok_ =
+          tok_ =
             is_digit(chr) ? parse_numeric_value() :
             std::iswalpha(chr) ? parse_symbol() :
             chr == eof_chr ? tt::end_of_input :
             tt::error
           ;
+          break;
         }
       }
+      std::cout << "[" << id_ << "]\n";
+      return tok_;
     }
 
     tt tok() const { return tok_; }
-    std::wstring id() const { return id_; }
+    std::string id() const { return id_; }
+    obj *value() const { return value_; }
 
   private:
     static bool is_digit(int c) {
@@ -258,7 +274,33 @@ namespace little_r {
       while (iswalnum(chr) || chr == '.' || chr == '_') {
         consume();
       }
+      switch (id()[0]) {
+        case '.': if (is_sym("...")) return tt::dotdotdot; else break;
+        case 'b': if (is_sym("break")) return tt::break_; else break;
+        case 'e': if (is_sym("else")) return tt::else_; else break;
+        case 'F': if (is_sym("FALSE")) return tt::num_const; else break;
+        case 'f': if (is_sym("for")) return tt::for_; else if (is_sym("function")) return tt::function; else break;
+        case 'i': if (is_sym("if")) return tt::if_; else if (is_sym("in")) return tt::in; else break;
+        case 'I': if (is_sym("Inf")) return value_ = obj::null_const(), tt::num_const; else break;
+        case 'N':
+          if (is_sym("NA")) return value_ = obj::null_const(), tt::num_const;
+          if (is_sym("NA_complex_")) return value_ = obj::null_const(), tt::num_const;
+          if (is_sym("NA_integer_")) return value_ = obj::null_const(), tt::num_const;
+          if (is_sym("NA_real_")) return value_ = obj::null_const(), tt::num_const;
+          if (is_sym("Nan")) return value_ = obj::null_const(), tt::num_const;
+          if (is_sym("NULL")) return value_ = obj::null_const(), tt::null_const;
+          else break;
+        case 'n': if (is_sym("next")) return tt::next; else break;
+        case 'r': if (is_sym("repeat")) return tt::repeat; else break;
+        case 'T': if (is_sym("TRUE")) return tt::num_const; else break;
+        case 'w': if (is_sym("while")) return tt::while_; else break;
+      }
+      value_ = obj::make_symbol(id());
       return tt::symbol;
+    }
+
+    bool is_sym(const char *sym) {
+      return !std::strcmp(id_.c_str(), sym);
     }
 
     tt parse_numeric_value() {
@@ -369,8 +411,11 @@ namespace little_r {
 
     std::wistream &istr;
     tt tok_;
-    std::wstring id_;
+    std::string id_;
     int chr;
     int eof_chr;
+    obj *value_;
   };
 }
+
+#endif

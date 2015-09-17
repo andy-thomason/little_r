@@ -13,9 +13,9 @@ namespace little_r {
         lexer lex(istr);
         do {
           lex.next();
-          std::wcout << "[" << lex.id() << "]\n";
+          std::cout << "[" << lex.id() << "]\n";
           if (lex.tok() == tt::error) {
-            std::wcout << "error\n";
+            std::cout << "error\n";
             return false;
           }
         } while(lex.tok() != tt::end_of_input);
@@ -23,7 +23,7 @@ namespace little_r {
 
       if (true) {
         std::wfstream istr("../test/R-tests/arith.R");
-        lexer lex(istr);
+        parser p(istr);
       }
       return true;
     }
