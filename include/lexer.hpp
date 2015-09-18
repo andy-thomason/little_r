@@ -41,8 +41,8 @@ namespace little_r {
     le,
     eq,
     ne,
-    and,
-    or,
+    and_,
+    or_,
     and2,
     or2,
     ns_get,
@@ -54,7 +54,7 @@ namespace little_r {
     modulus,
     special,
     colon,
-    not,
+    not_,
     lbrace,
     rbrace,
     lparen,
@@ -152,10 +152,10 @@ namespace little_r {
 
       switch (chr) {
         case '>': consume(); tok_ = next_is('=') ? tt::ge : tt::gt; break;
-        case '!': consume(); tok_ = next_is('=') ? tt::ne : tt::not; break;
+        case '!': consume(); tok_ = next_is('=') ? tt::ne : tt::not_; break;
         case '=': consume(); tok_ = next_is('=') ? tt::eq : tt::eq_assign; break;
-        case '&': consume(); tok_ = next_is('&') ? tt::and2 : tt::and; break;
-        case '|': consume(); tok_ = next_is('|') ? tt::or2 : tt::or; break;
+        case '&': consume(); tok_ = next_is('&') ? tt::and2 : tt::and_; break;
+        case '|': consume(); tok_ = next_is('|') ? tt::or2 : tt::or_; break;
         case '{': consume(); tok_ = tt::lbrace; break;
         case '}': consume(); tok_ = tt::rbrace; break;
         case '(': consume(); tok_ = tt::lparen; break;
@@ -316,7 +316,7 @@ namespace little_r {
         }
       }
 
-      while (chr <= max_code && is_hex_digit(chr) || (chr == '.' && expect_dot)) {
+      while ((chr <= max_code && is_hex_digit(chr)) || (chr == '.' && expect_dot)) {
         expect_dot = chr != '.';
         consume();
       }

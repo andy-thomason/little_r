@@ -42,13 +42,13 @@ namespace little_r {
         // 170 %left		'~' TILDE
         case tt::tilde: return 170;
         // 180 %left		OR OR2
-        case tt::or: return 180;
+        case tt::or_: return 180;
         case tt::or2: return 180;
         // 190 %left		AND AND2
-        case tt::and: return 190;
+        case tt::and_: return 190;
         case tt::and2: return 190;
         // 200 %left		UNOT NOT
-        case tt::not: return 200;
+        case tt::not_: return 200;
         // 210 %nonassoc   	GT GE LT LE EQ NE
         case tt::lt: case tt::le: case tt::eq:
         case tt::ne: case tt::ge: case tt::gt: return 210;
@@ -142,7 +142,7 @@ namespace little_r {
         }
 
         // |	'!' expr %prec UNOT		{ $$ = xxunary($1,$2);	setId( $$, @$); }
-        case tt::not: {
+        case tt::not_: {
           next();
           //result = new expr(tt::minus, expr(0));
           result = expr(0);
@@ -311,8 +311,8 @@ namespace little_r {
           case tt::question:
           case tt::lt: case tt::le: case tt::eq:
           case tt::ne: case tt::ge: case tt::gt:
-          case tt::and:
-          case tt::or:
+          case tt::and_:
+          case tt::or_:
           case tt::and2:
           case tt::or2:
           case tt::left_assign:

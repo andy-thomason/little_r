@@ -2,6 +2,8 @@
 #ifndef OBJECTS_HPP
 #define OBJECTS_HPP
 
+#include <cstring>
+
 namespace little_r {
   enum class ot {
     nil = 0, // nil  = null
