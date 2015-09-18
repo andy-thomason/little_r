@@ -77,122 +77,9 @@ namespace little_r {
     "S4",    //an S4 object which is not a simple object
   };
 
-  // equivalent to reference compiler's SEXP
-  class obj {
-  public:
-    obj(ot type=ot::list, obj *elem1=null_const(), obj *elem2=null_const()) {
-      init(type, elem1, elem2);
-    }
+  class obj;
 
-    obj(obj *elem1, obj *elem2) {
-      init(ot::list, elem1, elem2);
-    }
-
-    obj(ot type, obj *elem1, obj *elem2, obj *elem3) {
-      init(type, elem1, new obj(type, elem2, elem3));
-    }
-
-    /*template <typename... elems>
-    obj(ot type, obj *head, elems... tail) {
-      init(type, head, new obj(type, tail...));
-    }*/
-
-    void *operator new(size_t size) {
-      // stand-in allocator
-      return malloc(size);
-    }
-
-    void operator delete(void *) {
-    }
-
-    void *operator new(size_t size, size_t extra) {
-      // stand-in allocator
-      return malloc(size + extra);
-    }
-
-    void operator delete(void *, size_t) {
-    }
-
-    ot type() const { return sxpinfo.type; }
-    obj *head() const { return listsxp.carval; }
-    obj *tail() const { return listsxp.cdrval; }
-    obj *tag() const { return listsxp.tagval; }
-
-    obj &set_type(ot value) { sxpinfo.type = value; return *this; }
-    obj &set_head(obj *value) { listsxp.carval = value; return *this; }
-    obj &set_tail(obj *value) { listsxp.cdrval = value; return *this; }
-    obj &set_tag(obj *value) { listsxp.tagval = value; return *this; }
-
-    obj &add_to_stretchy(obj *last) {
-      obj *extra = new obj(last, null_const());
-      head()->set_tail(extra);
-      set_head(extra);
-      return *this;
-    }
-
-    obj *last() {
-      obj *p = this;
-      while (tail() != null_const()) {
-        p = tail();
-      }
-      return p;
-    }
-
-    obj *append(obj *val) {
-      obj *t = tail();
-      obj *extra = new obj(ot::list, val);
-      t->set_tail(extra);
-      return extra;
-    }
-
-    char *chr_data() { return (char*)this + sizeof(obj); }
-
-    static obj *null_const() {
-      static obj null_const_value;
-      return &null_const_value;
-    }
-
-    static obj *make_string(const std::string &str) {
-      obj *res = new (str.size() + 1) obj(ot::chr);
-      memcpy(res->chr_data(), str.c_str(), str.size() + 1);
-      return res;
-    }
-
-    static obj *make_symbol(const std::string &str) {
-      obj *res = new (str.size() + 1) obj(ot::symbol);
-      memcpy(res->chr_data(), str.c_str(), str.size() + 1);
-      return res;
-    }
-
-    // make a list who's head points to the last element
-    static obj *make_stretchy_list() {
-      obj *res = new obj(null_const(), null_const());
-      res->set_head(res);
-      return res;
-    }
-
-    bool isNull() const { return sxpinfo.type == ot::nil; }
-    bool isSymbol() const { return sxpinfo.type == ot::symbol; }
-    bool isLogical() const { return sxpinfo.type == ot::logical; }
-    bool isReal() const { return sxpinfo.type == ot::real; }
-    bool isComplex() const { return sxpinfo.type == ot::complex; }
-    bool isExpression() const { return sxpinfo.type == ot::expr; }
-    bool isEnvironment() const { return sxpinfo.type == ot::env; }
-    bool isString() const { return sxpinfo.type == ot::str; }
-    bool isObject() const { return sxpinfo.obj != 0; }
-
-  protected:
-    void init(ot type, obj *head, obj *tail) {
-      memset(this, 0, sizeof(*this));
-      sxpinfo.type = type;
-      //attrib = nullptr;
-      //gengc_next_node = nullptr;
-      //gengc_prev_node = nullptr;
-      listsxp.carval = head;
-      listsxp.cdrval = tail;
-      //listsxp.tagval = nullptr;
-    }
-
+  struct SEXPREC {
     // apologies for the readablility here, these names are from the
     // original R source code.
     struct vecsxp_struct {
@@ -248,6 +135,122 @@ namespace little_r {
        promsxp_struct promsxp;
     };
   };
+
+  typedef SEXPREC *SEXP;
+
+
+  // equivalent to reference compiler's SEXP
+  class obj : private SEXPREC {
+  public:
+    obj(ot type=ot::list) {
+      init(type, null_const(), null_const());
+    }
+
+    obj(ot type, obj *elem1) {
+      init(type, elem1, null_const());
+    }
+
+    obj(ot type, obj *elem1, obj *elem2) {
+      init(type, elem1, elem2);
+    }
+
+    /*obj(ot type, obj *elem1, obj *elem2, obj *elem3) {
+      init(type, elem1, new obj(type, elem2, elem3));
+    }*/
+
+    /*template <typename... elems>
+    obj(ot type, obj *head, elems... tail) {
+      init(type, head, new obj(type, tail...));
+    }*/
+
+    static obj *null_const() {
+      static SEXPREC value;
+      return (obj*)&value;
+    }
+
+    void *operator new(size_t size) {
+      // stand-in allocator
+      return malloc(size);
+    }
+
+    void operator delete(void *) {
+    }
+
+    void *operator new(size_t size, size_t extra) {
+      // stand-in allocator
+      return malloc(size + extra);
+    }
+
+    void operator delete(void *, size_t) {
+    }
+
+    ot type() const { return sxpinfo.type; }
+    obj *head() const { return listsxp.carval; }
+    obj *tail() const { return listsxp.cdrval; }
+    obj *tag() const { return listsxp.tagval; }
+
+    obj &set_type(ot value) { sxpinfo.type = value; return *this; }
+    obj &set_head(obj *value) { listsxp.carval = value; return *this; }
+    obj &set_tail(obj *value) { listsxp.cdrval = value; return *this; }
+    obj &set_tag(obj *value) { listsxp.tagval = value; return *this; }
+
+    obj *last() {
+      obj *p = this;
+      while (tail() != null_const()) {
+        p = tail();
+      }
+      return p;
+    }
+
+    obj *append(obj *val) {
+      obj *t = tail();
+      obj *extra = new obj(ot::list, val);
+      t->set_tail(extra);
+      return extra;
+    }
+
+    char *chr_data() { return (char*)this + sizeof(obj); }
+
+    static obj *make_string(const std::string &str) {
+      obj *res = new (str.size() + 1) obj(ot::chr);
+      memcpy(res->chr_data(), str.c_str(), str.size() + 1);
+      return res;
+    }
+
+    static obj *make_symbol(const std::string &str) {
+      obj *res = new (str.size() + 1) obj(ot::symbol);
+      memcpy(res->chr_data(), str.c_str(), str.size() + 1);
+      return res;
+    }
+
+    bool isNull() const { return sxpinfo.type == ot::nil; }
+    bool isSymbol() const { return sxpinfo.type == ot::symbol; }
+    bool isLogical() const { return sxpinfo.type == ot::logical; }
+    bool isReal() const { return sxpinfo.type == ot::real; }
+    bool isComplex() const { return sxpinfo.type == ot::complex; }
+    bool isExpression() const { return sxpinfo.type == ot::expr; }
+    bool isEnvironment() const { return sxpinfo.type == ot::env; }
+    bool isString() const { return sxpinfo.type == ot::str; }
+    bool isObject() const { return sxpinfo.obj != 0; }
+
+    void dump(std::ostream &os) {
+      switch (type()) {
+      }
+    }
+
+  protected:
+    void init(ot type, obj *head, obj *tail) {
+      memset(this, 0, sizeof(*this));
+      sxpinfo.type = type;
+      //attrib = nullptr;
+      //gengc_next_node = nullptr;
+      //gengc_prev_node = nullptr;
+      listsxp.carval = head;
+      listsxp.cdrval = tail;
+      //listsxp.tagval = nullptr;
+    }
+  };
+
 }
 
 #endif
