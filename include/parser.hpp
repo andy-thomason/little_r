@@ -109,17 +109,18 @@ namespace little_r {
 
         // |	'{' exprlist '}'		{ $$ = xxexprlist($1,&@1,$2); setId( $$, @$); }
         case tt::lbrace: {
+          obj *sym = obj::make_symbol(id());
           next();
-          result = new obj(ot::
-          expr();
+          result = new obj(ot::lang, sym, expr());
           expect(tt::rbrace);
           break;
         }
 
         // |	'(' expr_or_assign ')'		{ $$ = xxparen($1,$2);	setId( $$, @$); }
         case tt::lparen: {
+          obj *sym = obj::make_symbol(id());
           next();
-          result = expr();
+          result = new obj(ot::lang, sym, expr());
           expect(tt::rparen);
           break;
         }
@@ -229,14 +230,13 @@ namespace little_r {
         }
       }
 
-        // |	expr '(' sublist ')'		{ $$ = xxfuncall($1,$3);  setId( $$, @$); modif_token( &@1, SYMBOL_FUNCTION_CALL ) ; }
+      // |	expr '(' sublist ')'		{ $$ = xxfuncall($1,$3);  setId( $$, @$); modif_token( &@1, SYMBOL_FUNCTION_CALL ) ; }
       if (tok() == tt::lparen) {
         next();
         obj *actuals = sublist();
         expect(tt::rparen);
-        return 
+        return new obj(ot::lang, result, actuals);
       }
-
 
       bool done = false;
       while (!done) {
@@ -317,8 +317,12 @@ namespace little_r {
           case tt::or2:
           case tt::left_assign:
           case tt::right_assign:
-          binary:
           {
+            // a higher precedence operator will group right.
+            // eg. a + b * c -> a + (b * c)
+            // a lower precedence operator will terminate the expression call.
+            // a same precedence operator will group left via the for loop.
+            // eg. a + b + c -> (a + b) + c
             int tok_prec = get_precedence(tok());
             if (tok_prec < precedence) {
               done = true;
@@ -365,7 +369,7 @@ namespace little_r {
           if (result == obj::null_const()) {
             prev = result = new obj();
           }
-          prev = prev->append(expr);
+          prev = prev->append(lhs);
           if (tok() != tt::comma) {
             break;
           }
@@ -378,6 +382,13 @@ namespace little_r {
     void expect(tt token) {
       if (tok() != token) {
         throw std::runtime_error(std::string("expected") + tok_to_str[(unsigned)token]);
+      }
+      next();
+    }
+
+    void expect(tt token1, tt token2) {
+      if (tok() != token1 || tok() != token2) {
+        throw std::runtime_error(std::string("expected") + tok_to_str[(unsigned)token1] + " or " + tok_to_str[(unsigned)token2]);
       }
       next();
     }

@@ -90,6 +90,11 @@ namespace little_r {
       init(type, elem1, new obj(type, elem2, elem3));
     }
 
+    /*template <typename... elems>
+    obj(ot type, obj *head, elems... tail) {
+      init(type, head, new obj(type, tail...));
+    }*/
+
     void *operator new(size_t size) {
       // stand-in allocator
       return malloc(size);
