@@ -5,7 +5,10 @@
 #include "lexer.hpp"
 #include "objects.hpp"
 
+#include <iostream>
+
 namespace little_r {
+
   class parser : public lexer {
   public:
     parser(std::wistream &istr) : lexer(istr) {
@@ -17,7 +20,8 @@ namespace little_r {
       for(;;) {
         if (tok() == tt::error) break;
         if (tok() == tt::end_of_input) break;
-        expr(0);
+        obj *e = expr(0);
+        e->dump(std::cout);
       }
     }
 
@@ -61,18 +65,51 @@ namespace little_r {
         // 250 %left		':'
         case tt::colon: return 250;
         // 260 %left		UMINUS UPLUS
-        //case tt::uminus: case tt::uplus: return 260;
+        case tt::uminus: case tt::uplus: return 260;
         // 270 %right		'^'
         case tt::caret: return 270;
         // 280 %left		'$' '@'
+        case tt::dollar: return 280;
         // 290 %left		NS_GET NS_GET_INT
-        default: throw std::runtime_error("get_precedence");
+        case tt::ns_get: return 280;
+        case tt::ns_get_int: return 290;
       }
       return 0;
     }
 
-    obj *expr(int precedence=0, bool allow_assign=true, bool allow_ltgt=true) {
+    enum class grouping {
+      left,
+      right,
+      noassoc,
+    };
+
+    grouping get_grouping(tt sym) {
+      switch (sym) {
+        // 120 %right		IF
+        // 140 %right		LEFT_ASSIGN
+        // 150 %right		EQ_ASSIGN
+        // 270 %right		'^'
+        case tt::if_:
+        case tt::left_assign:
+        case tt::eq_assign: {
+          return grouping::right;
+        }
+
+        // 210 %nonassoc   	GT GE LT LE EQ NE
+        case tt::lt: case tt::le: case tt::eq:
+        case tt::ne: case tt::ge: case tt::gt: {
+          return grouping::noassoc;
+        }
+
+        default: return grouping::left;
+      }
+    }
+
+    obj *expr(int min_precedence=0, bool allow_assign=true) {
       obj *result = obj::null_const();
+
+      push_debug("expr");
+      indent(); printf("min_precedence=%d\n", min_precedence);
 
       // skip newlines
       while (tok() == tt::newline) {
@@ -184,7 +221,9 @@ namespace little_r {
         // |	IF ifcond expr_or_assign ELSE expr_or_assign	{ $$ = xxifelse($1,$2,$3,$5);	setId( $$, @$); }
         case tt::if_: {
           next();
+          expect(tt::lparen);
           obj *cond = expr(0);
+          expect(tt::rparen);
           obj *stmt = expr(0);
           if (tok() == tt::else_) {
             next();
@@ -195,14 +234,20 @@ namespace little_r {
         // |	FOR forcond expr_or_assign %prec FOR 	{ $$ = xxfor($1,$2,$3);	setId( $$, @$); }
         case tt::for_: {
           next();
-          obj *cond = expr(0);
+          expect(tt::lparen);
+          while (tok() != tt::rparen) {
+            next();
+          }
+          expect(tt::rparen);
           obj *stmt = expr(0);
           break;
         }
         // |	WHILE cond expr_or_assign	{ $$ = xxwhile($1,$2,$3);	setId( $$, @$); }
         case tt::while_: {
           next();
+          expect(tt::lparen);
           obj *cond = expr(0);
+          expect(tt::rparen);
           obj *stmt = expr(0);
           break;
         }
@@ -230,52 +275,48 @@ namespace little_r {
         }
       }
 
-      // |	expr '(' sublist ')'		{ $$ = xxfuncall($1,$3);  setId( $$, @$); modif_token( &@1, SYMBOL_FUNCTION_CALL ) ; }
-      if (tok() == tt::lparen) {
+      int prev_prec = 0;
+      for(;;) {
+        tt op = tok();
+        int prec = get_precedence(op);
+        if (prec == 0 || prec <= min_precedence) break;
+        if (op == tt::eq_assign && !allow_assign) break;
+
+        grouping gr = get_grouping(op);
+        if (gr == grouping::noassoc && prec == prev_prec) break;
+        prev_prec = prec;
+
+        obj *sym = obj::make_symbol(id());
+
         next();
-        obj *actuals = sublist();
-        expect(tt::rparen);
-        return new obj(ot::lang, result, actuals);
-      }
 
-      bool done = false;
-      while (!done) {
-        int prec = 0;
-        int right = 0;
-
-        if (tok() == tt::newline) {
-          next();
-          return result;
-        }
-
-        switch (tok()) {
+        switch (op) {
+          // |	expr '(' sublist ')'		{ $$ = xxfuncall($1,$3);  setId( $$, @$); modif_token( &@1, SYMBOL_FUNCTION_CALL ) ; }
           // |	expr LBB sublist ']' ']'	{ $$ = xxsubscript($1,$2,$3);	setId( $$, @$); }
           // |	expr '[' sublist ']'		{ $$ = xxsubscript($1,$2,$3);	setId( $$, @$); }
-          case tt::lbb: {
-            next();
-            sublist();
-            expect(tt::rbracket);
-            expect(tt::rbracket);
-            break;
+          case tt::lbracket:
+          case tt::lbb:
+          case tt::lparen: {
+            obj *actuals = sublist();
+            expect(tt::rparen);
+            result = new obj(ot::lang, result, actuals);
+            result->set_tag(sym);
+            continue;
           }
-          case tt::lbracket: {
-            next();
-            sublist();
-            expect(tt::rbracket);
-            break;
+          case tt::newline: {
+            return result;
           }
+        }
 
+        // left grouping operators will parse like ( ( a + b ) + c ) + d    so rhs will accept fewer tokens
+        // right grouping operators will parse like a = ( b = ( c = d ) )   so rhs will accept more tokens
+        obj *rhs = expr(prec - (gr == grouping::right ? 1 : 0));
+
+        switch (op) {
           // |	expr '$' SYMBOL			{ $$ = xxbinary($2,$1,$3);	setId( $$, @$); }
           // |	expr '$' STR_CONST		{ $$ = xxbinary($2,$1,$3);	setId( $$, @$); }
           // |	expr '@' SYMBOL			{ $$ = xxbinary($2,$1,$3);      setId( $$, @$); modif_token( &@3, SLOT ) ; }
           // |	expr '@' STR_CONST		{ $$ = xxbinary($2,$1,$3);	setId( $$, @$); }
-          case tt::dollar:
-          case tt::at: {
-            next();
-            expect(tt::symbol, tt::str_const);
-          }
-
-
           // |	expr ':'  expr			{ $$ = xxbinary($2,$1,$3);	setId( $$, @$); }
           // |	expr '+'  expr			{ $$ = xxbinary($2,$1,$3);	setId( $$, @$); }
           // |	expr '-' expr			{ $$ = xxbinary($2,$1,$3);	setId( $$, @$); }
@@ -296,7 +337,6 @@ namespace little_r {
           // |	expr OR expr			{ $$ = xxbinary($2,$1,$3);	setId( $$, @$); }
           // |	expr AND2 expr			{ $$ = xxbinary($2,$1,$3);	setId( $$, @$); }
           // |	expr OR2 expr			{ $$ = xxbinary($2,$1,$3);	setId( $$, @$); }
-
           // |	expr LEFT_ASSIGN expr 		{ $$ = xxbinary($2,$1,$3);	setId( $$, @$); }
           // |	expr RIGHT_ASSIGN expr 		{ $$ = xxbinary($2,$3,$1);	setId( $$, @$); }
           case tt::colon:
@@ -317,27 +357,20 @@ namespace little_r {
           case tt::or2:
           case tt::left_assign:
           case tt::right_assign:
+          case tt::dollar:
+          case tt::at:
           {
-            // a higher precedence operator will group right.
-            // eg. a + b * c -> a + (b * c)
-            // a lower precedence operator will terminate the expression call.
-            // a same precedence operator will group left via the for loop.
-            // eg. a + b + c -> (a + b) + c
-            int tok_prec = get_precedence(tok());
-            if (tok_prec < precedence) {
-              done = true;
-              break;
-            }
-            next();
-            obj *rhs = expr(prec);
-            result = new obj(ot::lang, result, rhs);
+            result = new obj(ot::lang, sym, result, rhs);
             break;
           }
+
           default: {
             error("expected operator");
           }
         }
       }
+      indent(); std::cout << "prec fail " << *result << "\n";
+      pop_debug();
       return result;
     }
 

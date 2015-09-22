@@ -70,6 +70,8 @@ namespace little_r {
     semicolon,
     question,
     dotdotdot,
+    uplus,
+    uminus,
   };
 
   static const char *tok_to_str[] = {
@@ -129,7 +131,25 @@ namespace little_r {
     ";",
     "?",
     "...",
+    "+",
+    "-",
   };
+
+  inline void indent(int delta = 0) {
+    static int depth;
+    if (delta == -1) --depth;
+    printf("%*s", depth*2, "");
+    if (delta == 1) ++depth;
+  }
+
+  inline void push_debug(const char *label) {
+    indent(); puts(label);
+    indent(1); puts("{");
+  }
+
+  inline void pop_debug() {
+    indent(-1); puts("}");
+  }
 
   class lexer {
   public:
@@ -225,7 +245,7 @@ namespace little_r {
           break;
         }
       }
-      std::cout << "[" << id_ << "]\n";
+      indent(); std::cout << "[" << id_ << "]\n";
       return tok_;
     }
 

@@ -79,9 +79,8 @@ namespace little_r {
 
   class obj;
 
+  // Record to use when using the original R C code stuctures.
   struct SEXPREC {
-    // apologies for the readablility here, these names are from the
-    // original R source code.
     struct vecsxp_struct {
       size_t length;
       size_t truelength;
@@ -138,6 +137,9 @@ namespace little_r {
 
   typedef SEXPREC *SEXP;
 
+  typedef obj *objref;
+
+  std::ostream &operator <<(std::ostream &os, const obj &rhs);
 
   // equivalent to reference compiler's SEXP
   class obj : private SEXPREC {
@@ -146,26 +148,22 @@ namespace little_r {
       init(type, null_const(), null_const());
     }
 
-    obj(ot type, obj *elem1) {
+    obj(ot type, objref elem1) {
       init(type, elem1, null_const());
     }
 
-    obj(ot type, obj *elem1, obj *elem2) {
+    obj(ot type, objref elem1, objref elem2) {
       init(type, elem1, elem2);
     }
 
-    /*obj(ot type, obj *elem1, obj *elem2, obj *elem3) {
-      init(type, elem1, new obj(type, elem2, elem3));
-    }*/
-
-    /*template <typename... elems>
-    obj(ot type, obj *head, elems... tail) {
+    template <typename... elems>
+    obj(ot type, objref head, elems... tail) {
       init(type, head, new obj(type, tail...));
-    }*/
+    }
 
-    static obj *null_const() {
-      static SEXPREC value;
-      return (obj*)&value;
+    static objref null_const() {
+      static const SEXPREC value;
+      return objref(&value);
     }
 
     void *operator new(size_t size) {
@@ -185,40 +183,41 @@ namespace little_r {
     }
 
     ot type() const { return sxpinfo.type; }
-    obj *head() const { return listsxp.carval; }
-    obj *tail() const { return listsxp.cdrval; }
-    obj *tag() const { return listsxp.tagval; }
+    objref head() const { return listsxp.carval; }
+    objref tail() const { return listsxp.cdrval; }
+    objref tag() const { return listsxp.tagval; }
 
     obj &set_type(ot value) { sxpinfo.type = value; return *this; }
-    obj &set_head(obj *value) { listsxp.carval = value; return *this; }
-    obj &set_tail(obj *value) { listsxp.cdrval = value; return *this; }
-    obj &set_tag(obj *value) { listsxp.tagval = value; return *this; }
+    obj &set_head(objref value) { listsxp.carval = value; return *this; }
+    obj &set_tail(objref value) { listsxp.cdrval = value; return *this; }
+    obj &set_tag(objref value) { listsxp.tagval = value; return *this; }
 
-    obj *last() {
-      obj *p = this;
+    objref last() {
+      objref p = this;
       while (tail() != null_const()) {
         p = tail();
       }
       return p;
     }
 
-    obj *append(obj *val) {
-      obj *t = tail();
-      obj *extra = new obj(ot::list, val);
+    objref append(objref val) {
+      objref t = tail();
+      objref extra = new obj(ot::list, val);
       t->set_tail(extra);
       return extra;
     }
 
     char *chr_data() { return (char*)this + sizeof(obj); }
+    const char *chr_data() const { return (const char*)this + sizeof(obj); }
 
-    static obj *make_string(const std::string &str) {
-      obj *res = new (str.size() + 1) obj(ot::chr);
+    static objref make_string(const std::string &str) {
+      objref res = new (str.size() + 1) obj(ot::chr);
       memcpy(res->chr_data(), str.c_str(), str.size() + 1);
       return res;
     }
 
-    static obj *make_symbol(const std::string &str) {
-      obj *res = new (str.size() + 1) obj(ot::symbol);
+    static objref make_symbol(const std::string &str) {
+      objref res = new (str.size() + 1) obj(ot::symbol);
       memcpy(res->chr_data(), str.c_str(), str.size() + 1);
       return res;
     }
@@ -233,23 +232,43 @@ namespace little_r {
     bool isString() const { return sxpinfo.type == ot::str; }
     bool isObject() const { return sxpinfo.obj != 0; }
 
-    void dump(std::ostream &os) {
+    std::ostream &dump(std::ostream &os) const {
+      if (this == nullptr) return os << "<nullptr>";
       switch (type()) {
+        case ot::nil: return os << "NULL";
+        case ot::symbol: return os << "`" << chr_data() << "\'";
+        case ot::list: {
+          os << "[";
+          for (const obj *p = this; p != null_const(); p = p->tail()) {
+            os << *head();
+            if (tag() != nullptr) os << "(t=" << *tag() << ")";
+            if (p->tail() != null_const()) os << ", ";
+          }
+          return os << "]";
+        }
+        case ot::lang: {
+          os << "[L ";
+          for (const obj *p = this; p != null_const(); p = p->tail()) {
+            os << *head();
+            if (tag() != nullptr) os << "+" << *tag();
+            if (p->tail() != null_const()) os << ", ";
+          }
+          return os << "]";
+        }
+        default: return os << "[" << object_names[(int)type()] << " " << *head() << ", " << *tail() << "]";
       }
     }
 
-  protected:
-    void init(ot type, obj *head, obj *tail) {
-      memset(this, 0, sizeof(*this));
-      sxpinfo.type = type;
-      //attrib = nullptr;
-      //gengc_next_node = nullptr;
-      //gengc_prev_node = nullptr;
-      listsxp.carval = head;
-      listsxp.cdrval = tail;
-      //listsxp.tagval = nullptr;
+protected:
+    void init(ot type, objref head, objref tail) {
+      memset((SEXPREC*)this, 0, sizeof(SEXPREC));
     }
   };
+
+  std::ostream &operator <<(std::ostream &os, const obj &rhs) {
+    rhs.dump(os);
+    return os;
+  }
 
 }
 

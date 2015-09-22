@@ -1,6 +1,8 @@
 
 #include "parser.hpp"
 
+#include <sstream>
+
 namespace little_r {
   class little_r {
   public:
@@ -21,10 +23,16 @@ namespace little_r {
         } while(lex.tok() != tt::end_of_input);
       }
 
-      if (true) {
+      if (false) {
         std::wfstream istr("../test/R-tests/arith.R");
         parser p(istr);
       }
+
+      if (true) {
+        std::wistringstream istr(L"1 + b");
+        parser p(istr);
+      }
+
       return true;
     }
   private:
